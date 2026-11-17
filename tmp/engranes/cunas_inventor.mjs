@@ -1,0 +1,30 @@
+import fs from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+const req=createRequire('C:/Users/migue/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/package.json');
+const {FileBlob,SpreadsheetFile}=await import(pathToFileURL(req.resolve('@oai/artifact-tool')).href);
+const dir='tmp/engranes/';
+const w=await SpreadsheetFile.importXlsx(await FileBlob.load(dir+'import_cunas_inventor.xlsx'));
+const s=w.worksheets.getItem('Cuña');
+const values={B25:'L. útil',B26:'T cuñero',B27:'h contacto',G25:'in',G26:'in',G27:'in',H23:'Cuñas 2 y 3: B=4.763 mm, T=2.540 mm; cuñero de extremos redondos (Inventor).',H25:'T es profundidad del cuñero, no altura de la cuña. Se conserva h=3/16 in.',H26:'Cuñas 2 y 3: L útil=L-B; altura de contacto=min(T,h-T). Long. mínima incluye extremos.',H27:'Cuñas 1 y 4 conservan la geometría previa; sus cuñeros aún no se han confirmado.'};
+const formulas={};
+for(const c of ['D','E']){
+ formulas[c+'3']='=4.763/25.4';
+ formulas[c+'26']='=2.540/25.4';
+ formulas[c+'25']=`=MAX(0,${c}21-${c}3)`;
+ formulas[c+'27']=`=MIN(${c}26,${c}4-${c}26)`;
+ formulas[c+'18']=`=${c}15*${c}6/(${c}3*${c}11*${c}17)`;
+ formulas[c+'19']=`=${c}15*${c}6/(${c}27*${c}9*${c}17)`;
+ formulas[c+'20']=`=MAX(${c}18,${c}19)+${c}3`;
+ formulas[c+'22']=`=${c}11*${c}3*${c}25*${c}17/${c}15`;
+ formulas[c+'23']=`=${c}9*${c}27*${c}25*${c}17/${c}15`;
+ formulas[c+'24']=`=IF(AND(${c}22>=${c}6,${c}23>=${c}6,${c}21<=${c}5,${c}27>0),"CUMPLE","REVISAR")`;
+}
+for(const [a,v] of Object.entries(values))s.getRange(a).values=[[v]];
+for(const [a,v] of Object.entries(formulas))s.getRange(a).formulas=[[v]];
+w.recalculate();
+console.log((await w.inspect({kind:'table',range:"'Cuña'!D18:E27",tableMaxRows:10,tableMaxCols:2,maxChars:1800})).ndjson);
+const p=await w.render({sheetName:s.name,range:'B13:G27',scale:1.6,format:'png'});
+await fs.writeFile(dir+'cunas_inventor.png',new Uint8Array(await p.arrayBuffer()));
+await (await SpreadsheetFile.exportXlsx(w)).save(dir+'export_cunas_inventor.xlsx');
+await fs.writeFile(dir+'cambios_cunas_inventor.json',JSON.stringify({values,formulas}));
